@@ -20,7 +20,7 @@
 #   postgresql-15 (Debian bookworm) — the app database. Cluster lives at
 #     /data/data/pgdata (PGDATA, on the single Railway volume). Trust auth
 #     on localhost only; postgres never leaves the container.
-#   meilisearch binary (copied from the pinned getmeili/meilisearch image)
+#   meilisearch binary (official v1.13.3 glibc linux-amd64 release build)
 #     — full-text search. Index at /data/data/meili_data (on the volume),
 #     master key generated once at first boot and persisted at
 #     /data/data/.meili_master_key so it survives restarts.
@@ -37,21 +37,20 @@
 # Upstream: https://github.com/linkwarden/linkwarden (AGPL-3.0)
 # Base image: ghcr.io/linkwarden/linkwarden v2.16.3
 
-FROM getmeili/meilisearch@sha256:c4d6ab59c18d7b3636e82af862c31861ccf8afb3e9c14dddf9d3e868840667cd AS meili
-
 FROM ghcr.io/linkwarden/linkwarden@sha256:0664c28a039bda8ffa6663389e8536b2fc717219e329f85b83faca7efed3b144
 
 USER root
 
-# Meilisearch binary from the pinned official image (statically linked).
-COPY --from=meili /bin/meilisearch /usr/local/bin/meilisearch
-
 # PostgreSQL 15 server (Debian bookworm package; creates the `postgres` user)
-# and musl: the Meilisearch binary above is built for Alpine/musl, so the
-# musl loader must exist for it to execute on this glibc base.
+# and the Meilisearch binary: the official glibc linux-amd64 release build
+# (v1.13.3, pinned) — the getmeili/meilisearch Docker image is Alpine/musl
+# and its binary cannot run on this glibc base.
 RUN set -eux && \
     apt-get update && \
-    apt-get install -yqq --no-install-recommends postgresql-15 musl && \
+    apt-get install -yqq --no-install-recommends postgresql-15 curl ca-certificates && \
+    curl -fsSL -o /usr/local/bin/meilisearch \
+      https://github.com/meilisearch/meilisearch/releases/download/v1.13.3/meilisearch-linux-amd64 && \
+    chmod +x /usr/local/bin/meilisearch && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
