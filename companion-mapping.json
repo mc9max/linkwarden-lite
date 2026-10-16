@@ -49,7 +49,7 @@
   },
   "postgres": {
     "PGDATA": {
-      "value": "/var/lib/postgresql/data",
+      "value": "/var/lib/postgresql/data/pgdata",
       "description": "Postgres data directory (on the Railway volume)."
     },
     "POSTGRES_DB": {

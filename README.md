@@ -34,7 +34,7 @@ Pocket-style "read it later" apps rent you your own memory. Linkwarden keeps it 
 
 - **Port:** honors Railway's injected `PORT` (`next start` on the web app)
 - **Memory:** app ~500 MB at rest; Chromium archival jobs spike — `MAX_WORKERS=1` caps concurrency so bursts stay inside Hobby limits. Postgres ~100 MB, Meilisearch ~200 MB at rest
-- **Persistence:** `/data/data` (archives), `/var/lib/postgresql/data`, `/meili_data` — all on Railway volumes
+- **Persistence:** `/data/data` (archives), `/var/lib/postgresql/data/pgdata`, `/meili_data` — all on Railway volumes
 - **Healthcheck:** `GET /` (200 or login redirect, unauthenticated)
 - **First boot:** the entrypoint waits for Postgres, runs `prisma migrate deploy`, then starts web + worker
 
