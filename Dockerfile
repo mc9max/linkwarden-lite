@@ -18,17 +18,17 @@
 #
 # Added layers:
 #   postgresql-15 (Debian bookworm) — the app database. Cluster lives at
-#     /data/pgdata (PGDATA, on its own Railway volume). Trust auth on
-#     localhost only; postgres never leaves the container.
+#     /data/data/pgdata (PGDATA, on the single Railway volume). Trust auth
+#     on localhost only; postgres never leaves the container.
 #   meilisearch binary (copied from the pinned getmeili/meilisearch image)
-#     — full-text search. Index at /data/meili_data (own volume), master
-#     key generated once at first boot and persisted at
-#     /data/meili_data/.master_key so it survives restarts.
+#     — full-text search. Index at /data/data/meili_data (on the volume),
+#     master key generated once at first boot and persisted at
+#     /data/data/.meili_master_key so it survives restarts.
 #
-# Persistence (three Railway volumes, all mounted by railway.json):
-#   /data/data ....... archived pages (STORAGE_FOLDER)
-#   /data/pgdata ..... PostgreSQL cluster
-#   /data/meili_data . Meilisearch index + master key
+# Persistence (one Railway volume mounted at /data/data):
+#   /data/data/archives ... archived pages (STORAGE_FOLDER)
+#   /data/data/pgdata ..... PostgreSQL cluster (PGDATA)
+#   /data/data/meili_data . Meilisearch index + master key
 #
 # The entrypoint inits/starts postgres, starts meilisearch, waits for both,
 # runs `prisma migrate deploy`, then starts the web server and the worker
@@ -55,12 +55,12 @@ RUN set -eux && \
 
 # --- Baked constants (never on the deploy form) ---
 # Archives on the volume (absolute: the web/worker processes cd elsewhere).
-ENV STORAGE_FOLDER=/data/data
+ENV STORAGE_FOLDER=/data/data/archives
 # Bound Chromium archival concurrency: keeps archive bursts in Hobby RAM.
 ENV MAX_WORKERS=1
 # Postgres cluster dir (volume-mounted; subdir dodges the volume's lost+found
 # which makes initdb refuse a mount point used directly as PGDATA).
-ENV PGDATA=/data/pgdata
+ENV PGDATA=/data/data/pgdata
 ENV MEILI_NO_ANALYTICS=true
 ENV MEILI_ENV=production
 

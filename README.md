@@ -8,11 +8,12 @@ This repo is a one-click Railway wrapper around the official [Linkwarden](https:
 
 ## Deploy and Host
 
-Click **Deploy on Railway** — zero form fields. One service comes up with three volumes:
+Click **Deploy on Railway** — zero form fields. One service comes up with one volume:
 
-- **linkwarden-archives** → `/data/data` — every archived page (screenshot, PDF, HTML)
-- **linkwarden-postgres** → `/data/pgdata` — the PostgreSQL 15 cluster
-- **linkwarden-meilisearch** → `/data/meili_data` — the full-text search index
+- **linkwarden-data** → `/data/data` — everything persistent:
+  - `archives/` — every archived page (screenshot, PDF, HTML)
+  - `pgdata/` — the PostgreSQL 15 cluster
+  - `meili_data/` — the full-text search index (+ master key)
 
 The entrypoint initializes PostgreSQL on first boot (trust auth on localhost only — the database never leaves the container), generates the Meilisearch master key once and persists it on the volume, runs `prisma migrate deploy`, then starts the web server and the archiving worker. `NEXTAUTH_URL` points at your Railway domain and `NEXTAUTH_SECRET` is generated automatically.
 
@@ -34,13 +35,13 @@ Pocket-style "read it later" apps rent you your own memory. Linkwarden keeps it 
 
 - **Port:** honors Railway's injected `PORT` (`next start` on the web app)
 - **Memory:** app ~500 MB at rest; Chromium archival jobs spike — `MAX_WORKERS=1` caps concurrency so bursts stay inside Hobby limits. Postgres ~100 MB, Meilisearch ~200 MB at rest
-- **Persistence:** three Railway volumes (archives, postgres, meilisearch index)
+- **Persistence:** one Railway volume (archives, postgres, meilisearch index)
 - **Healthcheck:** `GET /` (200 or login redirect, unauthenticated)
 - **First boot:** the entrypoint inits PostgreSQL, starts Meilisearch, waits for both, runs `prisma migrate deploy`, then starts web + worker
 
 ### Deployment Dependencies
 
-One service, zero form fields, three volumes. The app needs outbound HTTPS (to archive the pages you save). PostgreSQL and Meilisearch run inside the same container on localhost — neither is exposed.
+One service, zero form fields, one volume. The app needs outbound HTTPS (to archive the pages you save). PostgreSQL and Meilisearch run inside the same container on localhost — neither is exposed.
 
 ## Configuration
 
@@ -53,8 +54,8 @@ Every variable the deployment consumes. The two template variables are auto-fill
 | `DATABASE_URL` | composed at boot | `postgresql://linkwarden@127.0.0.1:5432/linkwarden` (single-container Postgres, trust auth on localhost) |
 | `MEILI_HOST` | composed at boot | `http://127.0.0.1:7700` |
 | `MEILI_MASTER_KEY` | generated at first boot | Persisted at `/data/meili_data/.master_key` on the volume |
-| `STORAGE_FOLDER` | `/data/data` (baked) | Archive storage path (on the volume) |
-| `PGDATA` | `/data/pgdata` (baked) | PostgreSQL cluster dir (on the volume) |
+| `STORAGE_FOLDER` | `/data/data/archives` (baked) | Archive storage path (on the volume) |
+| `PGDATA` | `/data/data/pgdata` (baked) | PostgreSQL cluster dir (on the volume) |
 | `MAX_WORKERS` | `1` (baked) | Concurrent Chromium archival jobs |
 
 Applicable upstream variables (add in **Variables** as needed — [full list](https://docs.linkwarden.app/self-hosting/environment-variables)):

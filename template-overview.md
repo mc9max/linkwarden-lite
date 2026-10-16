@@ -6,9 +6,7 @@
 
 Deploys in one click with **zero form fields**. The whole stack runs in one service — the Next.js app + archiving worker (headless Chromium + `monolith` HTML snapshots), PostgreSQL 15, and Meilisearch — on three persistent volumes:
 
-- **linkwarden-archives** — every archived page
-- **linkwarden-postgres** — the database cluster
-- **linkwarden-meilisearch** — the full-text search index
+- **linkwarden-data** — one volume holding `archives/` (saved pages), `pgdata/` (PostgreSQL cluster) and `meili_data/` (search index)
 
 The entrypoint initializes PostgreSQL on first boot (localhost only — never exposed), generates the Meilisearch master key once and persists it on the volume, runs `prisma migrate deploy`, then starts the web server and worker. `NEXTAUTH_URL` points at your Railway domain; `NEXTAUTH_SECRET` is generated. Open the domain and create your account.
 
@@ -35,7 +33,7 @@ Read-it-later apps rent you your own memory. Linkwarden keeps it on your hardwar
 
 ### Deployment Dependencies
 
-One service, zero form fields, three volumes. The app needs outbound HTTPS (to archive the pages you save).
+One service, zero form fields, one volume. The app needs outbound HTTPS (to archive the pages you save).
 
 **Configuration** (auto-filled; optional upstream vars go in the service Variables panel):
 
@@ -45,8 +43,8 @@ One service, zero form fields, three volumes. The app needs outbound HTTPS (to a
 | `NEXTAUTH_SECRET` | `${{secret(32)}}` | Session signing secret |
 | `DATABASE_URL` | composed at boot | Single-container Postgres (`postgresql://linkwarden@127.0.0.1:5432/linkwarden`) |
 | `MEILI_HOST` / `MEILI_MASTER_KEY` | composed / generated at boot | Search backend; key persisted on the volume |
-| `STORAGE_FOLDER` | `/data/data` (baked) | Archive storage path |
-| `PGDATA` | `/data/pgdata` (baked) | Postgres cluster dir |
+| `STORAGE_FOLDER` | `/data/data/archives` (baked) | Archive storage path |
+| `PGDATA` | `/data/data/pgdata` (baked) | Postgres cluster dir |
 | `MAX_WORKERS` | `1` (baked) | Concurrent Chromium archival jobs |
 
 Useful upstream options: `PAGINATION_TAKE_COUNT`, `ARCHIVE_TAKE_COUNT`, `BROWSER_TIMEOUT`, `MAX_LINKS_PER_USER`, `NEXT_PUBLIC_RSS_POLLING_INTERVAL_MINUTES`, `TEXT_CONTENT_LIMIT`, AI auto-tagging (`OLLAMA_MODEL` or `OPENAI_API_KEY` + provider variants), S3 archive storage (`SPACES_*`), SMTP (`EMAIL_SERVER`/`EMAIL_FROM`), outbound `PROXY`, `ALLOW_PRIVATE_NETWORK_ACCESS`, PDF margins, and 40+ SSO providers (`NEXT_PUBLIC_<PROVIDER>_ENABLED` + credentials — GitHub, Google, Authentik, Keycloak, generic OIDC, …). Full list: https://docs.linkwarden.app/self-hosting/environment-variables

@@ -46,8 +46,8 @@ fi
 export DATABASE_URL="postgresql://linkwarden@127.0.0.1:5432/linkwarden"
 
 # ---------------- Meilisearch ----------------
-MEILI_KEY_FILE=/data/meili_data/.master_key
-mkdir -p /data/meili_data
+MEILI_KEY_FILE=/data/data/.meili_master_key
+mkdir -p /data/data/meili_data
 if [ ! -f "$MEILI_KEY_FILE" ]; then
   echo "[linkwarden-entrypoint] generating Meilisearch master key"
   tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32 > "$MEILI_KEY_FILE"
@@ -57,13 +57,13 @@ export MEILI_MASTER_KEY="$(cat "$MEILI_KEY_FILE")"
 export MEILI_HOST="http://127.0.0.1:7700"
 
 echo "[linkwarden-entrypoint] starting Meilisearch"
-/usr/local/bin/meilisearch --http-addr 127.0.0.1:7700 --db-path /data/meili_data >>/data/meili_data/meili.log 2>&1 &
+/usr/local/bin/meilisearch --http-addr 127.0.0.1:7700 --db-path /data/data/meili_data >>/data/data/meili.log 2>&1 &
 
 echo "[linkwarden-entrypoint] waiting for Meilisearch ..."
 i=0
 until curl -sf http://127.0.0.1:7700/health >/dev/null 2>&1; do
   i=$((i + 1))
-  if [ "$i" -gt 60 ]; then echo "[linkwarden-entrypoint] meilisearch never became ready"; tail -20 /data/meili_data/meili.log; exit 1; fi
+  if [ "$i" -gt 60 ]; then echo "[linkwarden-entrypoint] meilisearch never became ready"; tail -20 /data/data/meili.log; exit 1; fi
   sleep 2
 done
 echo "[linkwarden-entrypoint] Meilisearch ready"
