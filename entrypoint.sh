@@ -1,65 +1,74 @@
 #!/bin/sh
 set -e
 
-# Linkwarden entrypoint for Railway.
+# Linkwarden single-service entrypoint for Railway.
 #
-# 1. Compose DATABASE_URL from PG* component vars (tianji-proven pattern).
-#    The template wires PGHOST/PGUSER/PGPASSWORD/PGDATABASE as single-value
-#    ${{postgres.VAR}} references, which Railway resolves reliably; composing
-#    several references inside one DATABASE_URL value is not reliable, so the
-#    composition happens here at boot. A manually-set DATABASE_URL wins.
-# 2. Wait for PostgreSQL before `prisma migrate deploy` — the stock image
-#    migrates immediately at boot, and on Railway the app and DB start in
-#    parallel, so the first boot would crash migrate on a not-yet-ready DB.
-# 3. Start the web server and the archiving worker in the foreground as PID 1
-#    (same concurrently command the stock image uses).
+# 1. PostgreSQL: init the cluster at $PGDATA on first boot (volume-backed),
+#    start it on localhost, create the `linkwarden` role + database.
+#    Trust auth — postgres never leaves this container.
+# 2. Meilisearch: master key generated once at first boot and persisted on
+#    the volume (a fresh key per restart would lock the app out of its own
+#    index). Starts on 127.0.0.1:7700.
+# 3. Wait for both, run `prisma migrate deploy`, then start the web server
+#    and the archiving worker in the foreground as PID 1 (the stock image's
+#    concurrently command).
 
 export PATH="/data/node_modules/.bin:$PATH"
 
-if [ -z "${DATABASE_URL}" ] && [ -n "${PGUSER}" ]; then
-  PGHOST="${PGHOST:-postgres}"
-  PGPORT="${PGPORT:-5432}"
-  PGDATABASE="${PGDATABASE:-linkwarden}"
-  if [ -n "${PGPASSWORD}" ]; then
-    export DATABASE_URL="postgresql://${PGUSER}:${PGPASSWORD}@${PGHOST}:${PGPORT}/${PGDATABASE}"
-  else
-    export DATABASE_URL="postgresql://${PGUSER}@${PGHOST}:${PGPORT}/${PGDATABASE}"
-  fi
-  echo "[linkwarden-entrypoint] composed DATABASE_URL from PG* component vars (host=${PGHOST})"
+# ---------------- PostgreSQL ----------------
+if [ ! -s "$PGDATA/PG_VERSION" ]; then
+  echo "[linkwarden-entrypoint] initializing PostgreSQL cluster at $PGDATA"
+  mkdir -p "$PGDATA" && chown -R postgres:postgres "$PGDATA"
+  su postgres -c "/usr/lib/postgresql/15/bin/initdb -D $PGDATA -E UTF8 --auth=trust"
 fi
 
-# --- Parse DB host/port out of DATABASE_URL (robust to user:pass@) ---
-HOSTPORT=""
-if [ -n "${DATABASE_URL}" ]; then
-  HOSTPORT="${DATABASE_URL#*://}"
-  HOSTPORT="${HOSTPORT##*@}"
-fi
-if [ -n "${HOSTPORT}" ]; then
-  case "${HOSTPORT}" in
-    *:*) DB_HOST="${HOSTPORT%%:*}"; DB_PORT="${HOSTPORT#*:}" ;;
-    *)   DB_HOST="${HOSTPORT}";   DB_PORT="5432" ;;
-  esac
-  DB_PORT="${DB_PORT%%/*}"
-else
-  DB_HOST="postgres"
-  DB_PORT="5432"
-fi
+echo "[linkwarden-entrypoint] starting PostgreSQL"
+su postgres -c "/usr/lib/postgresql/15/bin/pg_ctl -D $PGDATA -l $PGDATA/pg.log -o '-c listen_addresses=127.0.0.1' start"
 
-echo "[linkwarden-entrypoint] waiting for database at ${DB_HOST}:${DB_PORT} ..."
+echo "[linkwarden-entrypoint] waiting for PostgreSQL ..."
 i=0
-while ! node -e "
-  const net = require('net');
-  const s = net.connect({ host: '${DB_HOST}', port: Number('${DB_PORT}'), timeout: 2000 });
-  s.on('connect', () => { s.end(); process.exit(0); });
-  s.on('error',   () => process.exit(1));
-  s.on('timeout', () => { s.destroy(); process.exit(1); });
-"; do
+until su postgres -c "pg_isready -h 127.0.0.1 -p 5432" >/dev/null 2>&1; do
   i=$((i + 1))
-  echo "[linkwarden-entrypoint] database not up yet (attempt ${i})"
-  sleep 3
+  if [ "$i" -gt 60 ]; then echo "[linkwarden-entrypoint] postgres never became ready"; exit 1; fi
+  sleep 2
 done
-echo "[linkwarden-entrypoint] database reachable"
+echo "[linkwarden-entrypoint] PostgreSQL ready"
 
+if ! su postgres -c "psql -h 127.0.0.1 -p 5432 -tc \"SELECT 1 FROM pg_roles WHERE rolname='linkwarden'\"" | grep -q 1; then
+  su postgres -c "psql -h 127.0.0.1 -p 5432 -c \"CREATE USER linkwarden;\""
+  echo "[linkwarden-entrypoint] created role linkwarden"
+fi
+if ! su postgres -c "psql -h 127.0.0.1 -p 5432 -tc \"SELECT 1 FROM pg_database WHERE datname='linkwarden'\"" | grep -q 1; then
+  su postgres -c "psql -h 127.0.0.1 -p 5432 -c \"CREATE DATABASE linkwarden OWNER linkwarden;\""
+  echo "[linkwarden-entrypoint] created database linkwarden"
+fi
+
+export DATABASE_URL="postgresql://linkwarden@127.0.0.1:5432/linkwarden"
+
+# ---------------- Meilisearch ----------------
+MEILI_KEY_FILE=/data/meili_data/.master_key
+mkdir -p /data/meili_data
+if [ ! -f "$MEILI_KEY_FILE" ]; then
+  echo "[linkwarden-entrypoint] generating Meilisearch master key"
+  tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32 > "$MEILI_KEY_FILE"
+  chmod 600 "$MEILI_KEY_FILE"
+fi
+export MEILI_MASTER_KEY="$(cat "$MEILI_KEY_FILE")"
+export MEILI_HOST="http://127.0.0.1:7700"
+
+echo "[linkwarden-entrypoint] starting Meilisearch"
+/usr/local/bin/meilisearch --http-addr 127.0.0.1:7700 --db-path /data/meili_data >>/data/meili_data/meili.log 2>&1 &
+
+echo "[linkwarden-entrypoint] waiting for Meilisearch ..."
+i=0
+until curl -sf http://127.0.0.1:7700/health >/dev/null 2>&1; do
+  i=$((i + 1))
+  if [ "$i" -gt 60 ]; then echo "[linkwarden-entrypoint] meilisearch never became ready"; tail -20 /data/meili_data/meili.log; exit 1; fi
+  sleep 2
+done
+echo "[linkwarden-entrypoint] Meilisearch ready"
+
+# ---------------- App ----------------
 echo "[linkwarden-entrypoint] applying Prisma migrations"
 prisma migrate deploy --schema=/data/packages/prisma/schema.prisma
 
