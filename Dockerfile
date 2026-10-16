@@ -46,10 +46,12 @@ USER root
 # Meilisearch binary from the pinned official image (statically linked).
 COPY --from=meili /bin/meilisearch /usr/local/bin/meilisearch
 
-# PostgreSQL 15 server (Debian bookworm package; creates the `postgres` user).
+# PostgreSQL 15 server (Debian bookworm package; creates the `postgres` user)
+# and musl: the Meilisearch binary above is built for Alpine/musl, so the
+# musl loader must exist for it to execute on this glibc base.
 RUN set -eux && \
     apt-get update && \
-    apt-get install -yqq --no-install-recommends postgresql-15 && \
+    apt-get install -yqq --no-install-recommends postgresql-15 musl && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
