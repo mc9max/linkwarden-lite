@@ -1,5 +1,13 @@
 {
   "linkwarden": {
+    "MEILI_HOST": {
+      "value": "http://${{meilisearch.RAILWAY_PRIVATE_DOMAIN}}:7700",
+      "description": "Full-text search backend (Meilisearch companion). Auto-wired over the private network."
+    },
+    "MEILI_MASTER_KEY": {
+      "value": "${{meilisearch.MEILI_MASTER_KEY}}",
+      "description": "Shared secret for the Meilisearch companion. Auto-wired."
+    },
     "NEXTAUTH_SECRET": {
       "value": "${{secret(32)}}",
       "description": "Random secret for NextAuth session signing. Auto-generated."
@@ -7,6 +15,26 @@
     "NEXTAUTH_URL": {
       "value": "https://${{RAILWAY_PUBLIC_DOMAIN}}/api/v1/auth",
       "description": "Public auth callback base URL. Auto-filled from the Railway domain."
+    },
+    "PGHOST": {
+      "value": "${{postgres.RAILWAY_PRIVATE_DOMAIN}}",
+      "description": "Postgres host. Auto-wired over the private network."
+    },
+    "PGPASSWORD": {
+      "value": "${{postgres.POSTGRES_PASSWORD}}",
+      "description": "Postgres password. Auto-wired from the companion."
+    }
+  },
+  "meilisearch": {
+    "MEILI_MASTER_KEY": {
+      "value": "${{secret(32)}}",
+      "description": "Master key for the Meilisearch API. Auto-generated; shared with the app."
+    }
+  },
+  "postgres": {
+    "POSTGRES_PASSWORD": {
+      "value": "${{secret(16)}}",
+      "description": "Auto-generated database password."
     }
   }
 }

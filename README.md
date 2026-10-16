@@ -4,18 +4,13 @@
 
 **Linkwarden** is a self-hosted, collaborative bookmark manager that never lets a link die: every page you save is permanently archived as a **screenshot, a PDF, and a single-file HTML snapshot**, so it stays readable even after the original goes offline. Organize everything into collections with sub-collections and tags, share collections publicly or with collaborators, search it all with fast full-text search, and capture from anywhere with the browser extension and mobile apps.
 
-This repo is a one-click Railway wrapper around the official [Linkwarden](https://github.com/linkwarden/linkwarden) image (AGPL-3.0, v2.16.3 pinned by digest). The whole stack runs in **one service**: the Next.js app + archiving worker (headless Chromium screenshots/PDFs, single-file HTML via the `monolith` binary), PostgreSQL 15, and Meilisearch for full-text search — all on persistent volumes.
+This repo is a one-click Railway wrapper around the official [Linkwarden](https://github.com/linkwarden/linkwarden) image (AGPL-3.0, v2.16.3 pinned by digest). Three services deploy together:
 
-## Deploy and Host
+- **linkwarden** (this repo's `Dockerfile`) — the Next.js web app + archiving worker (headless Chromium screenshots/PDFs, single-file HTML via the `monolith` binary) on `/`
+- **postgres** (`postgres.Dockerfile`) — PostgreSQL 16, cluster on a Railway volume
+- **meilisearch** (`meilisearch.Dockerfile`) — Meilisearch v1.13.3 for full-text search, index on a Railway volume, private-network only
 
-Click **Deploy on Railway** — zero form fields. One service comes up with one volume:
-
-- **linkwarden-data** → `/data/data` — everything persistent:
-  - `archives/` — every archived page (screenshot, PDF, HTML)
-  - `pgdata/` — the PostgreSQL 15 cluster
-  - `meili_data/` — the full-text search index (+ master key)
-
-The entrypoint initializes PostgreSQL on first boot (trust auth on localhost only — the database never leaves the container), generates the Meilisearch master key once and persists it on the volume, runs `prisma migrate deploy`, then starts the web server and the archiving worker. `NEXTAUTH_URL` points at your Railway domain and `NEXTAUTH_SECRET` is generated automatically.
+Click **Deploy on Railway** — zero form fields. The database URL is composed at boot from the Postgres companion's credentials, `NEXTAUTH_URL` points at your Railway domain, and all three secrets (`NEXTAUTH_SECRET`, `POSTGRES_PASSWORD`, `MEILI_MASTER_KEY`) are generated.
 
 After deploy, open your Railway domain and **create your account** — registration is open by default.
 
@@ -35,28 +30,32 @@ Pocket-style "read it later" apps rent you your own memory. Linkwarden keeps it 
 
 - **Port:** honors Railway's injected `PORT` (`next start` on the web app)
 - **Memory:** app ~500 MB at rest; Chromium archival jobs spike — `MAX_WORKERS=1` caps concurrency so bursts stay inside Hobby limits. Postgres ~100 MB, Meilisearch ~200 MB at rest
-- **Persistence:** one Railway volume (archives, postgres, meilisearch index)
+- **Persistence:** `/data/data` (archives), `/var/lib/postgresql/data` (database), `/meili_data` (search index) — each on its own Railway volume
 - **Healthcheck:** `GET /` (200 or login redirect, unauthenticated)
-- **First boot:** the entrypoint inits PostgreSQL, starts Meilisearch, waits for both, runs `prisma migrate deploy`, then starts web + worker
+- **First boot:** the entrypoint waits for Postgres, runs `prisma migrate deploy`, then starts web + worker
 
 ### Deployment Dependencies
 
-One service, zero form fields, one volume. The app needs outbound HTTPS (to archive the pages you save). PostgreSQL and Meilisearch run inside the same container on localhost — neither is exposed.
+Three services, zero form fields, three volumes. The app needs outbound HTTPS (to archive the pages you save). Postgres and Meilisearch talk to the app over Railway's private network only — neither gets a public domain.
 
 ## Configuration
 
-Every variable the deployment consumes. The two template variables are auto-filled; everything else is baked into the image or composed at boot.
+Every variable the deployment consumes. All are auto-filled `${{...}}` expressions; every other constant is baked into the images or composed at boot.
 
 | Variable | Default | What it does |
 |---|---|---|
+| `PGHOST` / `PGPASSWORD` | `${{postgres.…}}` refs | Postgres companion credentials; composed into `DATABASE_URL` at boot (`postgresql://linkwarden:…@…:5432/linkwarden`) |
+| `DATABASE_URL` | composed at boot | Set it manually to override the composed one |
 | `NEXTAUTH_URL` | `https://${{RAILWAY_PUBLIC_DOMAIN}}/api/v1/auth` | Public auth callback base URL |
 | `NEXTAUTH_SECRET` | `${{secret(32)}}` | Session signing secret |
-| `DATABASE_URL` | composed at boot | `postgresql://linkwarden@127.0.0.1:5432/linkwarden` (single-container Postgres, trust auth on localhost) |
-| `MEILI_HOST` | composed at boot | `http://127.0.0.1:7700` |
-| `MEILI_MASTER_KEY` | generated at first boot | Persisted at `/data/meili_data/.master_key` on the volume |
-| `STORAGE_FOLDER` | `/data/data/archives` (baked) | Archive storage path (on the volume) |
-| `PGDATA` | `/data/data/pgdata` (baked) | PostgreSQL cluster dir (on the volume) |
+| `MEILI_HOST` | `http://${{meilisearch.RAILWAY_PRIVATE_DOMAIN}}:7700` | Full-text search backend |
+| `MEILI_MASTER_KEY` | `${{meilisearch.MEILI_MASTER_KEY}}` | Shared search API key |
+| `POSTGRES_PASSWORD` (postgres svc) | `${{secret(16)}}` | Database password |
+| `MEILI_MASTER_KEY` (meilisearch svc) | `${{secret(32)}}` | Search API master key |
+| `STORAGE_FOLDER` | `/data/data` (baked) | Archive storage path (on the volume) |
 | `MAX_WORKERS` | `1` (baked) | Concurrent Chromium archival jobs |
+| `PGDATA` / `POSTGRES_USER` / `POSTGRES_DB` | baked | Postgres cluster dir / role / database |
+| `MEILI_ENV` / `MEILI_NO_ANALYTICS` | baked | Meilisearch production mode, telemetry off |
 
 Applicable upstream variables (add in **Variables** as needed — [full list](https://docs.linkwarden.app/self-hosting/environment-variables)):
 
