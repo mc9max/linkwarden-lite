@@ -70,7 +70,10 @@ MEILI_MASTER_KEY="$(cat "$MEILI_KEY_FILE")"
 export MEILI_HOST="http://127.0.0.1:7700"
 
 start_meilisearch() {
-  /usr/local/bin/meilisearch --http-addr 127.0.0.1:7700 --db-path "$MEILI_DB" >>/data/data/meili.log 2>&1 &
+  # taskset pins Meilisearch to 2 CPUs: actix sizes its worker pool from
+  # visible CPUs, and 48 workers on Railway's throttled shared vCPU never
+  # finish starting (hangs after "Actix runtime found").
+  taskset -c 0,1 /usr/local/bin/meilisearch --http-addr 127.0.0.1:7700 --db-path "$MEILI_DB" >>/data/data/meili.log 2>&1 &
   MEILI_PID=$!
 }
 meilisearch_ready() {
