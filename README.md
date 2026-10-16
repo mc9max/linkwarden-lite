@@ -1,6 +1,6 @@
 # Linkwarden
 
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.com/deploy/linkwarden-lite?utm_campaign=linkwarden-lite)
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.com/deploy/linkwarden-3?utm_campaign=linkwarden-lite)
 
 **Linkwarden** is a self-hosted, collaborative bookmark manager that never lets a link die: every page you save is permanently archived as a **screenshot, a PDF, and a single-file HTML snapshot**, so it stays readable even after the original goes offline. Organize everything into collections with sub-collections and tags, share collections publicly or with collaborators, search it all with fast full-text search, and capture from anywhere with the browser extension and mobile apps.
 

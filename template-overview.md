@@ -1,6 +1,6 @@
 # Deploy and Host
 
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.com/deploy/linkwarden-lite?utm_campaign=linkwarden-lite)
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.com/deploy/linkwarden-3?utm_campaign=linkwarden-lite)
 
 **Linkwarden** — a self-hosted, collaborative bookmark manager that permanently archives every saved page as a **screenshot, PDF, and single-file HTML snapshot**, so your links survive link rot. Collections, tags, sharing, browser extension, mobile apps, and fast full-text search.
 
